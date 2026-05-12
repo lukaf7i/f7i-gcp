@@ -44,9 +44,16 @@ resource "aws_iam_role" "github_terraform" {
 
   lifecycle {
     ignore_changes = [
-      managed_policy_arns,
       tags,
       tags_all,
     ]
   }
+}
+
+# Prefer attachment resource over deprecated aws_iam_role.managed_policy_arns.
+resource "aws_iam_role_policy_attachment" "github_terraform_admin" {
+  count = var.environment == "dev" ? 1 : 0
+
+  role       = aws_iam_role.github_terraform[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
