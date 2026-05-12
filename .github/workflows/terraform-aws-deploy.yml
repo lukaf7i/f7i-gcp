@@ -1,3 +1,6 @@
+# ============================================================================
+# TEMPORARILY DISABLED (auto-triggers) — validate GCP first. Uncomment `push` under `on:` to re-enable.
+# ============================================================================
 # Runs when `dev` is updated (including after a PR is merged into `dev`): apply Terraform to the
 # AWS **dev** account using environment `dev`. Optional manual run: Actions → Terraform AWS (dev apply).
 #
@@ -15,28 +18,29 @@
 #      }
 #    }
 # 3) Attach IAM policy allowing what this Terraform stack needs (iterate from least privilege).
-# 4) GitHub repo variable: AWS_ROLE_ARN_DEV = arn:aws:iam::DEV_ACCOUNT_ID:role/your-role
+# 4) `environments.dev.aws.role_arn` in config/terraform-environments.yaml, or GitHub variable AWS_ROLE_ARN_DEV
 #
-# --- State in GCS (billing / bucket fixed in GCP) ---
-# Same variables as GCP Terraform workflows:
-#   GCP_TF_STATE_BUCKET_DEV (or GCP_TF_STATE_BUCKET), GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL
-# State prefix: terraform/aws/dev (only dev applies run from this workflow).
+# --- State in GCS ---
+# Dev state bucket: `config/terraform-environments.yaml` → environments.dev.gcp.state_bucket (by git branch).
+# Identity: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL
 #
 # GitHub Environment `terraform-apply-dev` (shared with GCP dev apply; optional protection rules).
 #
-# Prod: push to `main` runs `.github/workflows/terraform-aws-prod-deploy.yml` (matrix over
-# aws/config/prod-accounts.json), not this workflow.
+# Prod: push to `main` runs `.github/workflows/terraform-aws-prod-deploy.yml` (matrix from
+# `config/terraform-environments.yaml` → aws.prod_terraform_matrix).
 
 name: Terraform AWS (dev apply)
 
 on:
-  push:
-    branches:
-      - dev
-    paths:
-      - "aws/terraform/**"
-      - ".github/workflows/terraform-aws-deploy.yml"
   workflow_dispatch:
+  # push:
+  #   branches:
+  #     - dev
+  #   paths:
+  #     - "aws/terraform/**"
+  #     - "config/**"
+  #     - "scripts/ci/terraform-from-config.rb"
+  #     - ".github/workflows/terraform-aws-deploy.yml"
 
 concurrency:
   group: terraform-aws-apply-dev-${{ github.repository }}
@@ -57,17 +61,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select AWS dev role and Terraform env
+      - name: Resolve AWS dev role and GCS state bucket (from config)
         env:
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN_DEV }}
+          AWS_ROLE_ARN_DEV: ${{ vars.AWS_ROLE_ARN_DEV }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ -z "${ROLE_ARN}" ]; then
-            echo "Set repository variable AWS_ROLE_ARN_DEV to the IAM role ARN for GitHub OIDC on branch dev."
-            exit 1
-          fi
           echo "TF_ENV=dev" >> "$GITHUB_ENV"
           echo "TF_VAR_environment=dev" >> "$GITHUB_ENV"
-          echo "AWS_ROLE_TO_ASSUME=${ROLE_ARN}" >> "$GITHUB_ENV"
+          R="$(ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" aws-dev-role)"
+          echo "AWS_ROLE_TO_ASSUME=${R}" >> "$GITHUB_ENV"
+          B="$(ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" gcp-state-bucket "$REF_NAME")"
+          echo "GCP_TF_STATE_BUCKET=${B}" >> "$GITHUB_ENV"
 
       - uses: google-github-actions/auth@v2
         with:
@@ -94,17 +98,13 @@ jobs:
           fi
 
       - name: Require GCS state bucket
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_DEV || vars.GCP_TF_STATE_BUCKET }}
         run: |
-          if [ -z "${GCP_TF_STATE_BUCKET}" ]; then
-            echo "Set GCP_TF_STATE_BUCKET_DEV (or GCP_TF_STATE_BUCKET)."
+          if [ -z "${GCP_TF_STATE_BUCKET:-}" ]; then
+            echo "Missing dev state bucket in config/terraform-environments.yaml (environments.dev.gcp.state_bucket)."
             exit 1
           fi
 
       - name: Terraform Init
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_DEV || vars.GCP_TF_STATE_BUCKET }}
         run: |
           terraform init -input=false -reconfigure \
             -backend-config="bucket=${GCP_TF_STATE_BUCKET}" \

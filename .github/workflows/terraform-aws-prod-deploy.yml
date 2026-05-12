@@ -1,24 +1,27 @@
-# Push to `main` → one Terraform apply per entry in aws/config/prod-accounts.json (parallel matrix).
+# ============================================================================
+# TEMPORARILY DISABLED (auto-triggers) — validate GCP first. Uncomment `push` under `on:` to re-enable.
+# ============================================================================
+# Push to `main` → one Terraform apply per entry in config/terraform-environments.yaml `aws.prod_terraform_matrix` (parallel matrix).
 # Each row uses its own IAM role (GitHub OIDC trust: repo:f7i-ai/f7i-gcp:ref:refs/heads/main) and GCS prefix
 #   terraform/aws/prod/<key>/
 #
-# Edit aws/config/prod-accounts.json: map stable `key` → `role_arn` in each prod account.
-# Add/remove accounts by editing the JSON (same pattern as multi-account CDK waves).
+# Edit the YAML matrix: stable `key` → `role_arn` in each prod account.
 #
-# GCS state: GCP_TF_STATE_BUCKET_PROD (or GCP_TF_STATE_BUCKET) — typically the prod-org bucket, not the dev bucket.
-# GitHub Environment: `terraform-apply-prod` (same name as GCP prod apply).
+# GCS state: prod bucket from `config/terraform-environments.yaml` (environments.prod.gcp.state_bucket) via init step.
+# GitHub variables: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL (GCS access).
 
 name: Terraform AWS (prod apply)
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "aws/terraform/**"
-      - "aws/config/prod-accounts.json"
-      - ".github/workflows/terraform-aws-prod-deploy.yml"
   workflow_dispatch:
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "aws/terraform/**"
+  #     - "config/**"
+  #     - "scripts/ci/terraform-from-config.rb"
+  #     - ".github/workflows/terraform-aws-prod-deploy.yml"
 
 permissions:
   contents: read
@@ -36,7 +39,7 @@ jobs:
         id: set-matrix
         run: |
           echo "matrix<<MATRIX_EOF" >> "$GITHUB_OUTPUT"
-          jq -c . aws/config/prod-accounts.json >> "$GITHUB_OUTPUT"
+          ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" aws-prod-matrix >> "$GITHUB_OUTPUT"
           echo "MATRIX_EOF" >> "$GITHUB_OUTPUT"
 
   apply:
@@ -65,6 +68,11 @@ jobs:
           echo "STATE_PREFIX=terraform/aws/prod/${{ matrix.key }}" >> "$GITHUB_ENV"
           echo "AWS_ROLE_TO_ASSUME=${{ matrix.role_arn }}" >> "$GITHUB_ENV"
 
+      - name: GCS state bucket (from config)
+        run: |
+          B="$(ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" gcp-state-bucket main)"
+          echo "GCP_TF_STATE_BUCKET=${B}" >> "$GITHUB_ENV"
+
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -90,17 +98,13 @@ jobs:
           fi
 
       - name: Require GCS state bucket
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_PROD || vars.GCP_TF_STATE_BUCKET }}
         run: |
-          if [ -z "${GCP_TF_STATE_BUCKET}" ]; then
-            echo "Set GCP_TF_STATE_BUCKET_PROD (or GCP_TF_STATE_BUCKET)."
+          if [ -z "${GCP_TF_STATE_BUCKET:-}" ]; then
+            echo "Missing prod state bucket in config/terraform-environments.yaml (environments.prod.gcp.state_bucket)."
             exit 1
           fi
 
       - name: Terraform Init
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_PROD || vars.GCP_TF_STATE_BUCKET }}
         run: |
           terraform init -input=false -reconfigure \
             -backend-config="bucket=${GCP_TF_STATE_BUCKET}" \

@@ -1,20 +1,26 @@
+# ============================================================================
+# TEMPORARILY DISABLED (auto-triggers) — validate GCP first. Uncomment `pull_request` under `on:` to re-enable.
+# ============================================================================
 # PR → dev base: single plan (dev role, state prefix terraform/aws/dev).
-# PR → main base: matrix plan — one plan per row in aws/config/prod-accounts.json.
+# PR → main base: matrix plan — one plan per row in config/terraform-environments.yaml `aws.prod_terraform_matrix`.
 #
-# GitHub variables: GCP_TF_STATE_BUCKET_DEV / PROD (or GCP_TF_STATE_BUCKET), WIF, SA, AWS roles…
+# Buckets and roles: `config/terraform-environments.yaml` + scripts/ci/terraform-from-config.rb.
+# GitHub variables: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL, optional AWS_ROLE_ARN_DEV.
 # OIDC `sub` examples: repo:f7i-ai/f7i-gcp:ref:refs/heads/dev (plan on PR to dev); :main for prod matrix plans.
 
 name: Terraform AWS (PR)
 
 on:
-  pull_request:
-    branches:
-      - main
-      - dev
-    paths:
-      - "aws/terraform/**"
-      - "aws/config/**"
-      - ".github/workflows/terraform-aws-pr.yml"
+  workflow_dispatch:
+  # pull_request:
+  #   branches:
+  #     - main
+  #     - dev
+  #   paths:
+  #     - "aws/terraform/**"
+  #     - "config/**"
+  #     - "scripts/ci/terraform-from-config.rb"
+  #     - ".github/workflows/terraform-aws-pr.yml"
 
 permissions:
   contents: read
@@ -36,16 +42,16 @@ jobs:
 
       - name: Context (dev)
         env:
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN_DEV }}
+          AWS_ROLE_ARN_DEV: ${{ vars.AWS_ROLE_ARN_DEV }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ -z "${ROLE_ARN}" ]; then
-            echo "Set AWS_ROLE_ARN_DEV for PR plans targeting dev."
-            exit 1
-          fi
+          R="$(ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" aws-dev-role)"
+          echo "AWS_ROLE_TO_ASSUME=${R}" >> "$GITHUB_ENV"
           echo "TF_ENV=dev" >> "$GITHUB_ENV"
           echo "TF_VAR_environment=dev" >> "$GITHUB_ENV"
           echo "TF_VAR_account_key=" >> "$GITHUB_ENV"
-          echo "AWS_ROLE_TO_ASSUME=${ROLE_ARN}" >> "$GITHUB_ENV"
+          B="$(ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" gcp-state-bucket "$BASE_REF")"
+          echo "GCP_TF_STATE_BUCKET=${B}" >> "$GITHUB_ENV"
 
       - uses: google-github-actions/auth@v2
         with:
@@ -72,11 +78,9 @@ jobs:
           fi
 
       - name: Require GCS state bucket
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_DEV || vars.GCP_TF_STATE_BUCKET }}
         run: |
-          if [ -z "${GCP_TF_STATE_BUCKET}" ]; then
-            echo "Set GCP_TF_STATE_BUCKET_DEV (or GCP_TF_STATE_BUCKET)."
+          if [ -z "${GCP_TF_STATE_BUCKET:-}" ]; then
+            echo "Missing dev state bucket in config (environments.dev.gcp.state_bucket)."
             exit 1
           fi
 
@@ -84,8 +88,6 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform Init
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_DEV || vars.GCP_TF_STATE_BUCKET }}
         run: |
           terraform init -input=false -reconfigure \
             -backend-config="bucket=${GCP_TF_STATE_BUCKET}" \
@@ -115,7 +117,7 @@ jobs:
         id: set-matrix
         run: |
           echo "matrix<<MATRIX_EOF" >> "$GITHUB_OUTPUT"
-          jq -c . aws/config/prod-accounts.json >> "$GITHUB_OUTPUT"
+          ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" aws-prod-matrix >> "$GITHUB_OUTPUT"
           echo "MATRIX_EOF" >> "$GITHUB_OUTPUT"
 
   plan-prod:
@@ -142,6 +144,8 @@ jobs:
           echo "TF_VAR_account_key=${{ matrix.key }}" >> "$GITHUB_ENV"
           echo "STATE_PREFIX=terraform/aws/prod/${{ matrix.key }}" >> "$GITHUB_ENV"
           echo "AWS_ROLE_TO_ASSUME=${{ matrix.role_arn }}" >> "$GITHUB_ENV"
+          B="$(ruby "$GITHUB_WORKSPACE/scripts/ci/terraform-from-config.rb" gcp-state-bucket main)"
+          echo "GCP_TF_STATE_BUCKET=${B}" >> "$GITHUB_ENV"
 
       - uses: google-github-actions/auth@v2
         with:
@@ -168,11 +172,9 @@ jobs:
           fi
 
       - name: Require GCS state bucket
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_PROD || vars.GCP_TF_STATE_BUCKET }}
         run: |
-          if [ -z "${GCP_TF_STATE_BUCKET}" ]; then
-            echo "Set GCP_TF_STATE_BUCKET_PROD (or GCP_TF_STATE_BUCKET)."
+          if [ -z "${GCP_TF_STATE_BUCKET:-}" ]; then
+            echo "Missing prod state bucket in config (environments.prod.gcp.state_bucket)."
             exit 1
           fi
 
@@ -180,8 +182,6 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform Init
-        env:
-          GCP_TF_STATE_BUCKET: ${{ vars.GCP_TF_STATE_BUCKET_PROD || vars.GCP_TF_STATE_BUCKET }}
         run: |
           terraform init -input=false -reconfigure \
             -backend-config="bucket=${GCP_TF_STATE_BUCKET}" \
