@@ -42,3 +42,8 @@ output "github_terraform_role_arn" {
   description = "GitHub Actions OIDC role for Terraform CI (managed when environment=dev)."
   value       = try(aws_iam_role.github_terraform[0].arn, null)
 }
+
+output "public_invoker_hint" {
+  description = "Shell snippet to allow unauthenticated HTTPS calls when manage_cloud_function_public_invoker is false."
+  value       = var.manage_cloud_function_public_invoker ? null : "gcloud functions add-invoker-policy-binding ${google_cloudfunctions2_function.aws_bridge.name} --project=${var.project_id} --region=${var.region} --member=allUsers"
+}

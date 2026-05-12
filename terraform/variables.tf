@@ -31,3 +31,9 @@ variable "gcp_bridge_sa_id" {
   type        = string
   default     = ""
 }
+
+variable "manage_cloud_function_public_invoker" {
+  description = "If true, grants allUsers cloudfunctions.invoker on the Gen2 HTTP function. Requires the Terraform/deployer identity to have permission cloudfunctions.functions.setIamPolicy (e.g. roles/cloudfunctions.admin). Leave false if CI uses a narrower SA and add the binding once via gcloud/Console."
+  type        = bool
+  default     = false
+}
