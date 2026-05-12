@@ -6,6 +6,7 @@
 # Add/remove accounts by editing the JSON (same pattern as multi-account CDK waves).
 #
 # GCS state: GCP_TF_STATE_BUCKET_PROD (or GCP_TF_STATE_BUCKET) — typically the prod-org bucket, not the dev bucket.
+# GitHub Environment: use a single `terraform-aws-apply-prod` for all matrix jobs (not one env per account).
 
 name: Terraform AWS (prod apply)
 
@@ -44,7 +45,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
-    environment: terraform-aws-apply-prod-${{ matrix.key }}
+    # Single GitHub Environment for all prod accounts (avoid terraform-aws-apply-prod-* per matrix row).
+    environment: terraform-aws-apply-prod
     concurrency:
       group: terraform-aws-prod-${{ matrix.key }}-${{ github.repository }}
       cancel-in-progress: false
