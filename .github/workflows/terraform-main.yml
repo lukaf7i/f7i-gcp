@@ -10,7 +10,7 @@
 #   GCP_PROJECT_ID_PROD           — prod GCP project ID
 #   GCP_PROJECT_ID                — optional fallback if DEV/PROD project vars omitted
 #
-# GitHub Environments (optional): terraform-apply-dev, terraform-apply-prod (e.g. approvals on prod).
+# GitHub Environments (optional): only `terraform-apply-dev` and `terraform-apply-prod` for this repo (GCP + AWS).
 # WIF principal should allow this repo + branch: dev for dev applies, main for prod applies.
 #
 # Local state is not used; backend is always GCS.

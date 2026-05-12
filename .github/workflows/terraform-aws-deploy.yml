@@ -22,7 +22,7 @@
 #   GCP_TF_STATE_BUCKET_DEV (or GCP_TF_STATE_BUCKET), GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT_EMAIL
 # State prefix: terraform/aws/dev (only dev applies run from this workflow).
 #
-# GitHub Environment `terraform-aws-apply-dev` — optional protection rules / secrets.
+# GitHub Environment `terraform-apply-dev` (shared with GCP dev apply; optional protection rules).
 #
 # Prod: push to `main` runs `.github/workflows/terraform-aws-prod-deploy.yml` (matrix over
 # aws/config/prod-accounts.json), not this workflow.
@@ -49,7 +49,7 @@ permissions:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    environment: terraform-aws-apply-dev
+    environment: terraform-apply-dev
     defaults:
       run:
         working-directory: aws/terraform
