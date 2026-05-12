@@ -1,8 +1,9 @@
 locals {
+  # GCP label values cannot contain "/" (see label value charset in Cloud Console / API).
   common_labels = {
     managed_by  = "terraform"
     environment = var.environment
-    repository  = "f7i-ai/f7i-gcp"
+    repository  = "f7i-ai-f7i-gcp"
   }
 }
 
