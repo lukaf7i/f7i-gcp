@@ -1,4 +1,6 @@
-# GCP Terraform — applies on push to `dev` (dev project + state prefix) or `main` (prod project + prefix).
+# GCP Terraform — automated apply on push to `dev` only (dev project + state prefix) until dev is validated.
+# Re-enable `main` under on.push.branches when prod should apply on every merge to main.
+# `workflow_dispatch`: run from `dev` → dev apply; from `main` → prod apply (use only after dev is green).
 #
 # Prerequisites (GitHub → Settings → Secrets and variables → Actions → Variables):
 #   GCP_TF_STATE_BUCKET_DEV       e.g. anomaly-detection-dev-496103-terraform-state (dev state lives here)
@@ -10,7 +12,8 @@
 #   GCP_PROJECT_ID_PROD           — prod GCP project ID
 #   GCP_PROJECT_ID                — optional fallback if DEV/PROD project vars omitted
 #
-# GitHub Environments (optional): only `terraform-apply-dev` and `terraform-apply-prod` for this repo (GCP + AWS).
+# GitHub Environments (optional): `terraform-apply-dev` and `terraform-apply-prod` for these GCP jobs.
+# (Same names are used when AWS workflows are re-enabled.)
 # WIF in GCP must allow repository `f7i-ai/f7i-gcp` (attribute.repository) per branch if you restrict claims.
 #
 # Local state is not used; backend is always GCS.
@@ -21,7 +24,7 @@ on:
   push:
     branches:
       - dev
-      - main
+      # - main   # uncomment when prod should auto-apply on merge to main
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-main.yml"
