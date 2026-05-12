@@ -1,3 +1,5 @@
 functions-framework==3.*
 boto3==1.*
 google-auth==2.*
+# Required by google.auth.transport.requests (used for fetch_id_token); not always installed transitively in CF builds.
+requests>=2.28.0,<3

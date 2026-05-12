@@ -20,8 +20,6 @@ Test call:
 import datetime
 import json
 import os
-import urllib.request
-import urllib.parse
 
 import boto3
 import functions_framework
