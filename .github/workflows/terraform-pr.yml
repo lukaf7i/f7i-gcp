@@ -1,6 +1,6 @@
 # Plans on PRs targeting `dev` or `main` with the matching GCP project and state prefix.
 #
-# Same GitHub variables as terraform-main.yml.
+# Same GitHub variables as terraform-main.yml. Repo: f7i-ai/f7i-gcp.
 # State buckets: GCP_TF_STATE_BUCKET_DEV / PROD (or GCP_TF_STATE_BUCKET fallback).
 # State prefix: terraform/gcp/dev or terraform/gcp/prod.
 

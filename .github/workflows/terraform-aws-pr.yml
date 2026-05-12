@@ -2,6 +2,7 @@
 # PR → main base: matrix plan — one plan per row in aws/config/prod-accounts.json.
 #
 # GitHub variables: GCP_TF_STATE_BUCKET_DEV / PROD (or GCP_TF_STATE_BUCKET), WIF, SA, AWS roles…
+# OIDC `sub` examples: repo:f7i-ai/f7i-gcp:ref:refs/heads/dev (plan on PR to dev); :main for prod matrix plans.
 
 name: Terraform AWS (PR)
 

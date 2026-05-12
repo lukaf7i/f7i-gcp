@@ -1,5 +1,5 @@
 # Push to `main` → one Terraform apply per entry in aws/config/prod-accounts.json (parallel matrix).
-# Each row uses its own IAM role (GitHub OIDC trust: repo + ref:refs/heads/main) and GCS prefix
+# Each row uses its own IAM role (GitHub OIDC trust: repo:f7i-ai/f7i-gcp:ref:refs/heads/main) and GCS prefix
 #   terraform/aws/prod/<key>/
 #
 # Edit aws/config/prod-accounts.json: map stable `key` → `role_arn` in each prod account.

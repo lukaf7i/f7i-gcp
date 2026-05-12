@@ -4,14 +4,14 @@
 # --- Connect GitHub → AWS dev account (OIDC; no static keys) ---
 # 1) IAM → Identity providers: add `https://token.actions.githubusercontent.com` if missing
 #    (audience: `sts.amazonaws.com`).
-# 2) IAM role trust policy (example; replace OWNER/REPO and account id):
+# 2) IAM role trust policy (example; set DEV_ACCOUNT_ID; repo is f7i-ai/f7i-gcp):
 #    {
 #      "Effect": "Allow",
 #      "Principal": { "Federated": "arn:aws:iam::DEV_ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com" },
 #      "Action": "sts:AssumeRoleWithWebIdentity",
 #      "Condition": {
 #        "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-#        "StringLike": { "token.actions.githubusercontent.com:sub": "repo:OWNER/REPO:ref:refs/heads/dev" }
+#        "StringLike": { "token.actions.githubusercontent.com:sub": "repo:f7i-ai/f7i-gcp:ref:refs/heads/dev" }
 #      }
 #    }
 # 3) Attach IAM policy allowing what this Terraform stack needs (iterate from least privilege).

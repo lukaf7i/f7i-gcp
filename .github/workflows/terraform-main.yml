@@ -11,7 +11,7 @@
 #   GCP_PROJECT_ID                — optional fallback if DEV/PROD project vars omitted
 #
 # GitHub Environments (optional): only `terraform-apply-dev` and `terraform-apply-prod` for this repo (GCP + AWS).
-# WIF principal should allow this repo + branch: dev for dev applies, main for prod applies.
+# WIF in GCP must allow repository `f7i-ai/f7i-gcp` (attribute.repository) per branch if you restrict claims.
 #
 # Local state is not used; backend is always GCS.
 

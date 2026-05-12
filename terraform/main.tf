@@ -2,7 +2,7 @@ locals {
   common_labels = {
     managed_by  = "terraform"
     environment = var.environment
-    repository  = "f7i-gcp"
+    repository  = "f7i-ai/f7i-gcp"
   }
 }
 
