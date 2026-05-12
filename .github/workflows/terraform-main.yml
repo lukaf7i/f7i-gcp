@@ -1,6 +1,5 @@
-# GCP Terraform — automated apply on push to `dev` only (dev project + state prefix) until dev is validated.
-# Re-enable `main` under on.push.branches when prod should apply on every merge to main.
-# `workflow_dispatch`: run from `dev` → dev apply; from `main` → prod apply (use only after dev is green).
+# GCP Terraform — applies on push to `dev` (dev project + state prefix) or `main` (prod project + prefix).
+# `workflow_dispatch`: run from `dev` → dev apply; from `main` → prod apply.
 #
 # Prerequisites (GitHub → Settings → Secrets and variables → Actions → Variables):
 #   GCP_TF_STATE_BUCKET_DEV       e.g. anomaly-detection-dev-496103-terraform-state (dev state lives here)
@@ -24,7 +23,7 @@ on:
   push:
     branches:
       - dev
-      # - main   # uncomment when prod should auto-apply on merge to main
+      - main
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-main.yml"
