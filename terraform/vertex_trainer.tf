@@ -1,4 +1,4 @@
-# vertex-trainer Lambda + GCP Workload Identity Federation
+# vertex-trainer Lambda + GCP Workload Identity Federation.
 # ---------------------------------------------------------------------------
 # AWS Lambda (in this account) calls into GCP (Vertex AI + GCS) using an
 # AWS-typed Workload Identity Pool — no service-account JSON key on AWS.
