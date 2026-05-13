@@ -180,10 +180,10 @@ resource "aws_iam_role_policy" "gcp_vertex_completion" {
   })
 }
 
-# ── AWS: EventBridge rule + CloudWatch Log target ────────────────────────────
-# Prototype target: just log to CloudWatch so we can confirm events arrive.
-# Replace the target with the real handler (deploy-inference Lambda etc.)
-# once we have one for the Vertex side.
+# ── AWS: EventBridge rule + Lambda printer target ────────────────────────────
+# Prototype target: a tiny Lambda that just logs the event. Lets us verify
+# end-to-end with `aws logs tail /aws/lambda/vertex-completion-printer-${env}`.
+# Replace with the real handler (deploy-inference equivalent) once written.
 
 resource "aws_cloudwatch_event_rule" "vertex_completions" {
   name           = "vertex-training-completions-${var.environment}"
@@ -196,33 +196,58 @@ resource "aws_cloudwatch_event_rule" "vertex_completions" {
   })
 }
 
-resource "aws_cloudwatch_log_group" "vertex_completions" {
-  name              = "/aws/events/vertex-completions-${var.environment}"
-  retention_in_days = 14
+# Printer Lambda — single .py file, no deps, archive_file zips it directly.
+
+data "aws_iam_policy_document" "vertex_completion_printer_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
 }
 
-resource "aws_cloudwatch_event_target" "vertex_completions_log" {
+resource "aws_iam_role" "vertex_completion_printer" {
+  name               = "vertex-completion-printer-${var.environment}"
+  description        = "Execution role for the vertex-completion-printer debug Lambda."
+  assume_role_policy = data.aws_iam_policy_document.vertex_completion_printer_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "vertex_completion_printer_basic" {
+  role       = aws_iam_role.vertex_completion_printer.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+data "archive_file" "vertex_completion_printer_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../lambdas/vertex-completion-printer"
+  output_path = "/tmp/vertex-completion-printer-${var.environment}.zip"
+}
+
+resource "aws_lambda_function" "vertex_completion_printer" {
+  function_name    = "vertex-completion-printer-${var.environment}"
+  description      = "Debug target — logs every VertexTrainingJobStateChange event for end-to-end testing."
+  role             = aws_iam_role.vertex_completion_printer.arn
+  runtime          = "python3.12"
+  handler          = "handler.handler"
+  filename         = data.archive_file.vertex_completion_printer_zip.output_path
+  source_code_hash = data.archive_file.vertex_completion_printer_zip.output_base64sha256
+  timeout          = 30
+  memory_size      = 128
+}
+
+resource "aws_lambda_permission" "vertex_completion_printer_eventbridge" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.vertex_completion_printer.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.vertex_completions.arn
+}
+
+resource "aws_cloudwatch_event_target" "vertex_completions_printer" {
   rule           = aws_cloudwatch_event_rule.vertex_completions.name
   event_bus_name = aws_cloudwatch_event_bus.bridge.name
-  arn            = aws_cloudwatch_log_group.vertex_completions.arn
-}
-
-# EventBridge writes to CloudWatch Logs via a resource policy on the log group
-# (not via a role) — register one allowing the events service principal.
-resource "aws_cloudwatch_log_resource_policy" "vertex_completions" {
-  policy_name = "EventBridgeToCloudWatchLogs-vertex-completions-${var.environment}"
-  policy_document = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "events.amazonaws.com"
-      }
-      Action = [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-      ]
-      Resource = "${aws_cloudwatch_log_group.vertex_completions.arn}:*"
-    }]
-  })
+  arn            = aws_lambda_function.vertex_completion_printer.arn
 }

@@ -83,9 +83,9 @@ output "vertex_completion_aws_role_arn" {
   value       = aws_iam_role.gcp_vertex_completion.arn
 }
 
-output "vertex_completion_log_group" {
-  description = "CloudWatch Log group receiving forwarded VertexTrainingJobStateChange events (prototype target)."
-  value       = aws_cloudwatch_log_group.vertex_completions.name
+output "vertex_completion_printer_log_group" {
+  description = "CloudWatch Log group for the printer Lambda that logs every forwarded VertexTrainingJobStateChange event."
+  value       = "/aws/lambda/${aws_lambda_function.vertex_completion_printer.function_name}"
 }
 
 output "service_account_token_creator_hint" {
