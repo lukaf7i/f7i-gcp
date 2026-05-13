@@ -150,7 +150,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "set -e\n"
         "pip install -q --no-cache-dir "
         "torch==2.0.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu "
-        "numpy pandas scikit-learn google-cloud-storage\n"
+        "'numpy<2' pandas scikit-learn google-cloud-storage\n"
         "python -c \""
         "import os, zipfile; "
         "from urllib.parse import urlparse; "
