@@ -1,26 +1,9 @@
-"""vertex-trainer Lambda — AWS-side bridge to Vertex AI training.
+"""vertex-trainer Lambda — prototype.
 
-Invoke contract (direct ``aws lambda invoke``):
-
-    {
-        "sensor_id":                  "...",                  # required
-        "assetchart_table":           "assetchart-...-dev",   # required
-        "sensor_event_history_table": "...-sensor-event-history-...",  # required
-        "deployment_env":             "dev",                  # optional, default $DEPLOYMENT_ENV
-        "algorithm":                  "auto" | "rl" | "lstm_vae"  # optional, default "auto"
-    }
-
-The handler:
-    1. Reads sensor history from DynamoDB.
-    2. Fetches Argus labels via the cached sensor-event-history + Bedrock fallback.
-    3. Uploads train/val/test/full CSVs + placeholder llm_scores + labels.json to GCS.
-    4. Submits a Vertex AI CustomJob and returns its resource name.
-
-GCP authentication uses Workload Identity Federation — the Lambda execution
-role is granted ``iam.workloadIdentityUser`` on a GCP service account via an
-AWS-typed Workload Identity Pool. The ``google-auth`` library picks this up
-automatically from a credentials JSON staged at ``GOOGLE_APPLICATION_CREDENTIALS``
-(written into the package at build time by Terraform).
+Generates a tiny mock CSV, uploads it to GCS, and submits a Vertex AI
+CustomJob that just echoes the channel env vars. Proves the end-to-end
+AWS → GCP wiring (Workload Identity Federation, GCS write, Vertex submit)
+without depending on any real training image or AWS data sources.
 """
 
 from __future__ import annotations
@@ -28,121 +11,93 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any, Dict
 
 
 # ── GCP Workload Identity Federation bootstrap ────────────────────────────────
-# Terraform renders the external-account config and passes it via env var;
-# google-auth requires it on disk pointed to by GOOGLE_APPLICATION_CREDENTIALS.
 _WIF_PATH = "/tmp/gcp_wif_config.json"
 if "GCP_WIF_CONFIG_JSON" in os.environ and not os.path.exists(_WIF_PATH):
     with open(_WIF_PATH, "w") as _f:
         _f.write(os.environ["GCP_WIF_CONFIG_JSON"])
     os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", _WIF_PATH)
 
-from google.cloud import storage  # noqa: E402
-
-import labels as labels_mod  # noqa: E402
-import model_data  # noqa: E402
-import vertex_job  # noqa: E402
+from google.cloud import aiplatform, storage  # noqa: E402
 
 
 logging.getLogger().setLevel(logging.INFO)
 log = logging.getLogger(__name__)
 
 
-def _require(event: Dict[str, Any], key: str) -> Any:
-    if key not in event or event[key] in (None, ""):
-        raise ValueError(f"Missing required field: {key!r}")
-    return event[key]
+_MOCK_CSV = (
+    "timestamp,temperature,velocity_total_crest,velocity_x_rms,velocity_y_rms,velocity_z_rms\n"
+    + "\n".join(
+        f"2026-01-01T00:{m:02d}:00Z,{20 + m * 0.1:.2f},1.5,0.3,0.4,0.5"
+        for m in range(60)
+    )
+    + "\n"
+)
 
 
 def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     log.info("Received event: %s", json.dumps(event))
 
-    sensor_id           = _require(event, "sensor_id")
-    asset_chart_table   = _require(event, "assetchart_table")
-    sensor_history_tbl  = _require(event, "sensor_event_history_table")
-    deployment_env      = event.get("deployment_env") or os.environ.get("DEPLOYMENT_ENV", "dev")
-    algorithm_override  = event.get("algorithm", "auto")
-
     project        = os.environ["GCP_PROJECT_ID"]
     location       = os.environ["VERTEX_LOCATION"]
     staging_bucket = os.environ["GCS_STAGING_BUCKET"]
-    output_bucket  = os.environ.get("GCS_OUTPUT_BUCKET", staging_bucket)
+    service_account = os.environ["VERTEX_TRAINER_SA"]
     image_uri      = os.environ["VERTEX_TRAINER_IMAGE"]
     machine_type   = os.environ.get("VERTEX_MACHINE_TYPE", "n1-standard-4")
-    service_account = os.environ["VERTEX_TRAINER_SA"]
 
-    # ── 1. Gather sensor data from DynamoDB ───────────────────────────────────
-    sensor_rows = model_data.get_sensor_data(asset_chart_table, sensor_id)
+    run_id  = str(int(time.time()))
+    csv_key = f"mock/mock_data_{run_id}.csv"
 
-    # ── 2. Fetch labels (decides supervised vs unsupervised) ──────────────────
-    tp_dates, fp_dates = labels_mod.fetch_labels(
-        sensor_id=sensor_id,
-        deployment_env=deployment_env,
-        sensor_event_history_table=sensor_history_tbl,
+    # ── 1. Upload mock CSV to GCS ─────────────────────────────────────────────
+    storage.Client(project=project).bucket(staging_bucket).blob(csv_key).upload_from_string(
+        _MOCK_CSV, content_type="text/csv",
     )
-    mode = "supervised" if tp_dates else "unsupervised"
+    csv_uri = f"gs://{staging_bucket}/{csv_key}"
+    log.info("Uploaded mock dataset to %s", csv_uri)
 
-    # ── 3. Upload everything to GCS ───────────────────────────────────────────
-    gcs_client = storage.Client(project=project)
-    channel_uris = model_data.split_and_upload(
-        gcs_client=gcs_client,
-        sensor_data=sensor_rows,
-        sensor_id=sensor_id,
-        gcs_bucket=staging_bucket,
-    )
-    channel_uris["labels"] = model_data.upload_labels(
-        gcs_client=gcs_client,
-        gcs_bucket=staging_bucket,
-        gcs_prefix="",
-        sensor_id=sensor_id,
-        mode=mode,
-        tp_dates=tp_dates,
-        fp_dates=fp_dates,
+    # ── 2. Submit Vertex AI CustomJob ─────────────────────────────────────────
+    aiplatform.init(
+        project=project,
+        location=location,
+        staging_bucket=f"gs://{staging_bucket}",
     )
 
-    # ── 4. Launch the Vertex CustomJob ────────────────────────────────────────
-    if algorithm_override == "auto":
-        algorithm = "lstm_vae" if mode == "unsupervised" else "rl"
-    else:
-        algorithm = algorithm_override
+    job_name = f"vertex-trainer-proto-{run_id}"
+    base_output = f"gs://{staging_bucket}/output/{job_name}/"
 
-    if algorithm == "lstm_vae":
-        job_name, resource = vertex_job.launch_lstm_vae(
-            project=project,
-            location=location,
-            sensor_id=sensor_id,
-            channel_uris=channel_uris,
-            output_bucket=output_bucket,
-            image_uri=image_uri,
-            machine_type=machine_type,
-            service_account=service_account,
-            staging_bucket=f"gs://{staging_bucket}",
-        )
-    elif algorithm == "rl":
-        job_name, resource = vertex_job.launch_rl(
-            project=project,
-            location=location,
-            sensor_id=sensor_id,
-            mode=mode,
-            channel_uris=channel_uris,
-            output_bucket=output_bucket,
-            image_uri=image_uri,
-            machine_type=machine_type,
-            service_account=service_account,
-            staging_bucket=f"gs://{staging_bucket}",
-        )
-    else:
-        raise ValueError(f"Unknown algorithm: {algorithm!r}")
+    job = aiplatform.CustomJob(
+        display_name=job_name,
+        worker_pool_specs=[{
+            "machine_spec":  {"machine_type": machine_type},
+            "replica_count": 1,
+            "container_spec": {
+                "image_uri": image_uri,
+                "command":   ["python", "-c"],
+                "args": [
+                    "import os; "
+                    "print('vertex-trainer proto running'); "
+                    "print('INPUT_TRAIN_URI =', os.environ.get('INPUT_TRAIN_URI')); "
+                    "print('AIP_MODEL_DIR =',   os.environ.get('AIP_MODEL_DIR'))"
+                ],
+                "env": [
+                    {"name": "INPUT_TRAIN_URI", "value": csv_uri},
+                ],
+            },
+        }],
+        base_output_dir=base_output,
+        staging_bucket=f"gs://{staging_bucket}",
+    )
+    job.submit(service_account=service_account)
+    log.info("Submitted Vertex CustomJob %s (resource=%s)", job_name, job.resource_name)
 
     return {
-        "status":      "submitted",
-        "sensor_id":   sensor_id,
-        "algorithm":   algorithm,
-        "mode":        mode,
-        "job_name":    job_name,
-        "vertex_job":  resource,
-        "channel_uris": channel_uris,
+        "status":     "submitted",
+        "job_name":   job_name,
+        "vertex_job": job.resource_name,
+        "csv_uri":    csv_uri,
+        "output_uri": base_output,
     }

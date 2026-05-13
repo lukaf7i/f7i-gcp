@@ -33,9 +33,9 @@ variable "gcp_bridge_sa_id" {
 }
 
 variable "vertex_trainer_image" {
-  description = "Artifact Registry URI of the training container image used for Vertex AI CustomJobs. Must be published separately (the vertex-trainer Lambda only submits jobs; it does not build the image)."
+  description = "Container image URI for Vertex AI CustomJobs. Defaults to a public python:3.11-slim — fine for the prototype that just echoes env vars. Override with an Artifact Registry image once the real training container is published."
   type        = string
-  default     = ""
+  default     = "python:3.11-slim"
 }
 
 variable "vertex_machine_type" {

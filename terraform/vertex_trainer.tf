@@ -102,54 +102,10 @@ resource "aws_iam_role_policy_attachment" "vertex_trainer_lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Permissions to read sensor history and write labels back.
-# Broad table wildcard for dev — the existing predict consumer is tenant-specific
-# but this Lambda is invoked across tenants, so a single role grant covers all.
-# Narrow before prod (one statement per (tenant, table) prefix).
-resource "aws_iam_role_policy" "vertex_trainer_lambda_inline" {
-  name = "vertex-trainer-lambda-permissions"
-  role = aws_iam_role.vertex_trainer_lambda.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "DynamoDBRead"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:Query",
-          "dynamodb:GetItem",
-          "dynamodb:Scan",
-        ]
-        Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/*",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/*/index/*",
-        ]
-      },
-      {
-        Sid      = "DynamoDBHistoryWrite"
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
-        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/*sensor-event-history*"
-      },
-      {
-        Sid      = "SSMRead"
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/f7i/*/argus/*"
-      },
-      {
-        Sid    = "BedrockClaudeHaiku"
-        Effect = "Allow"
-        Action = ["bedrock:InvokeModel"]
-        Resource = [
-          "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku-*",
-          "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*claude-3-haiku*",
-        ]
-      },
-    ]
-  })
-}
+# Prototype: no AWS data-source permissions yet. The Lambda only needs
+# basic execution (logs) + the GCP federation to upload a mock CSV and
+# submit a Vertex job. DynamoDB/SSM/Bedrock grants come back when we
+# wire up the real data path.
 
 # ── Lambda deployment package ────────────────────────────────────────────────
 
