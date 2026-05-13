@@ -15,6 +15,7 @@ resource "aws_iam_openid_connect_provider" "google" {
 locals {
   bridge_google_aud_values = compact([
     var.gcp_bridge_sa_id,
+    var.gcp_vertex_completion_sa_id,
     "sts.amazonaws.com",
     "https://sts.amazonaws.com",
   ])

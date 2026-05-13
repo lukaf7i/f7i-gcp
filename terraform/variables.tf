@@ -32,6 +32,12 @@ variable "gcp_bridge_sa_id" {
   default     = ""
 }
 
+variable "gcp_vertex_completion_sa_id" {
+  description = "Numeric unique ID of the GCP Service Account for the vertex-completion-bridge function. Used in the AWS OIDC trust condition (azp -> aud). Leave empty on first apply — fill in after apply creates the SA, then re-apply."
+  type        = string
+  default     = ""
+}
+
 variable "ci_deployer_sa_email" {
   description = "GCP service account used by GitHub Actions to apply this Terraform. Granted roles/owner on var.project_id below — the GCP analog of the AWS AdministratorAccess attachment on the github_terraform role."
   type        = string

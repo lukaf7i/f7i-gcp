@@ -68,6 +68,26 @@ output "vertex_trainer_staging_bucket" {
   value       = google_storage_bucket.vertex_trainer_staging.name
 }
 
+output "vertex_completion_fn_sa_email" {
+  description = "GCP service account for the vertex-completion-bridge function. Use to fetch its numeric unique ID for gcp_vertex_completion_sa_id."
+  value       = google_service_account.vertex_completion_fn.email
+}
+
+output "vertex_completion_topic" {
+  description = "Pub/Sub topic that fans out Vertex CustomJob terminal-state log entries."
+  value       = google_pubsub_topic.vertex_job_completions.name
+}
+
+output "vertex_completion_aws_role_arn" {
+  description = "AWS IAM role the vertex-completion-bridge function assumes to call EventBridge."
+  value       = aws_iam_role.gcp_vertex_completion.arn
+}
+
+output "vertex_completion_log_group" {
+  description = "CloudWatch Log group receiving forwarded VertexTrainingJobStateChange events (prototype target)."
+  value       = aws_cloudwatch_log_group.vertex_completions.name
+}
+
 output "service_account_token_creator_hint" {
   description = "Run once as project owner: function SA must grant Token Creator to itself for generateIdToken→AWS (CI usually cannot setIamPolicy on this SA)."
   value       = "gcloud iam service-accounts add-iam-policy-binding ${google_service_account.aws_bridge_fn.email} --project=${var.project_id} --member=serviceAccount:${google_service_account.aws_bridge_fn.email} --role=roles/iam.serviceAccountTokenCreator"

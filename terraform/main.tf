@@ -21,6 +21,9 @@ resource "google_project_service" "core_apis" {
     "iamcredentials.googleapis.com",
     "aiplatform.googleapis.com",
     "sts.googleapis.com",
+    "pubsub.googleapis.com",
+    "logging.googleapis.com",
+    "eventarc.googleapis.com",
   ])
 
   project            = var.project_id
