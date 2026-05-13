@@ -19,70 +19,77 @@ Test call:
 
 import datetime
 import json
+import base64
 import os
+import re
+import urllib.parse
 
 import boto3
-from botocore import UNSIGNED
-from botocore.config import Config
 import functions_framework
+import requests
 
 
 # ── OIDC helpers ──────────────────────────────────────────────────────────────
 
 def _get_google_oidc_token(audience: str) -> str:
-    """Return a Google OIDC ID token via generateIdToken.
+    """Return a Google OIDC ID token for this runtime SA (Cloud Run / Cloud Functions).
 
-    For AWS, aud must be **sts.amazonaws.com** (register that client_id on the Google
-    IAM OIDC provider). IAM trust policies must include StringEquals on
-    accounts.google.com:aud — see AWS error “requires a StringEquals condition on an application id”.
+    Uses google-auth's fetch_id_token, which targets the correct issuance path on GCP.
+    Register the same **audience** on `aws_iam_openid_connect_provider` client_id_list and
+    in the role trust `accounts.google.com:aud` condition.
     """
-    import google.auth
-    import google.auth.transport.requests
-    import requests
+    from google.auth.transport.requests import Request
+    from google.oauth2 import id_token
 
-    auth_req = google.auth.transport.requests.Request()
-    creds, _ = google.auth.default()
-    creds.refresh(auth_req)
-    access_token = creds.token
+    return id_token.fetch_id_token(Request(), audience)
 
-    sa_email = getattr(creds, "service_account_email", None)
-    if not sa_email:
-        raise RuntimeError("Expected GCP service account credentials (missing service_account_email)")
 
-    url = f"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{sa_email}:generateIdToken"
-    r = requests.post(
-        url,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json; charset=utf-8",
-        },
-        json={"audience": audience, "includeEmail": False},
-        timeout=60,
-    )
-    if not r.ok:
-        raise RuntimeError(f"generateIdToken HTTP {r.status_code}: {r.text[:800]}")
-    return r.json()["token"]
+def _sts_xml_field(xml: str, tag: str) -> str | None:
+    m = re.search(f"<{tag}>([^<]*)</{tag}>", xml)
+    return m.group(1) if m else None
 
 
 def _assume_aws_role(role_arn: str, region: str) -> dict:
-    """Exchange the Google OIDC token for temporary AWS credentials."""
+    """Exchange the Google OIDC token for temporary AWS credentials via STS Query API."""
     oidc_token = _get_google_oidc_token("sts.amazonaws.com")
-
-    # AssumeRoleWithWebIdentity is unsigned. Pin global STS and avoid regional sts.<region>.amazonaws.com,
-    # which fails this Google OIDC flow with AccessDenied in practice.
-    sts = boto3.client(
-        "sts",
-        region_name="us-east-1",
-        endpoint_url="https://sts.amazonaws.com",
-        config=Config(signature_version=UNSIGNED),
+    body = urllib.parse.urlencode({
+        "Action": "AssumeRoleWithWebIdentity",
+        "Version": "2011-06-15",
+        "RoleArn": role_arn,
+        "RoleSessionName": "gcp-aws-bridge",
+        "WebIdentityToken": oidc_token,
+        "DurationSeconds": "900",
+    })
+    r = requests.post(
+        "https://sts.amazonaws.com/",
+        data=body.encode("utf-8"),
+        headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"},
+        timeout=60,
     )
-    response = sts.assume_role_with_web_identity(
-        RoleArn=role_arn,
-        RoleSessionName="gcp-aws-bridge",
-        WebIdentityToken=oidc_token,
-        DurationSeconds=900,
-    )
-    return response["Credentials"]
+    text = r.text
+    err_code = _sts_xml_field(text, "Code")
+    err_msg = _sts_xml_field(text, "Message")
+    if err_code or "<ErrorResponse" in text:
+        try:
+            p = oidc_token.split(".")[1]
+            p += "=" * (-len(p) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(p.encode("ascii")))
+            aud_info = f" jwt_aud={claims.get('aud')!r}"
+        except Exception:
+            aud_info = ""
+        raise RuntimeError(
+            f"STS AssumeRoleWithWebIdentity failed: {err_code}: {err_msg}{aud_info}\n{text[:1200]}"
+        )
+    ak = _sts_xml_field(text, "AccessKeyId")
+    sk = _sts_xml_field(text, "SecretAccessKey")
+    st = _sts_xml_field(text, "SessionToken")
+    if not (ak and sk and st):
+        raise RuntimeError(f"Unexpected STS response (HTTP {r.status_code}):\n{text[:1200]}")
+    return {
+        "AccessKeyId": ak,
+        "SecretAccessKey": sk,
+        "SessionToken": st,
+    }
 
 
 def _aws_clients(creds: dict, region: str) -> tuple:
