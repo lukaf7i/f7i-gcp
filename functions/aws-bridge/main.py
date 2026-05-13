@@ -103,7 +103,7 @@ def handle(request):
 
     # ── Step 1: mint Google OIDC token and expose its claims ──────────────────
     try:
-        oidc_token  = _get_google_oidc_token("sts.amazonaws.com")
+        oidc_token  = _get_google_oidc_token("https://sts.amazonaws.com")
         jwt_claims  = _decode_jwt_claims(oidc_token)
         token_error = None
     except Exception as exc:

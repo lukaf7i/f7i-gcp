@@ -29,11 +29,11 @@ data "aws_iam_policy_document" "gcp_aws_bridge_assume" {
     }
 
     # AWS requires this condition for any Google OIDC trust policy.
-    # The function mints the token with audience "sts.amazonaws.com".
+    # The function mints the token with audience "https://sts.amazonaws.com".
     condition {
       test     = "StringEquals"
       variable = "accounts.google.com:aud"
-      values   = ["sts.amazonaws.com"]
+      values   = ["https://sts.amazonaws.com"]
     }
   }
 }
