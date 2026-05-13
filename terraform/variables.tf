@@ -45,9 +45,9 @@ variable "ci_deployer_sa_email" {
 }
 
 variable "vertex_trainer_image" {
-  description = "Container image URI for Vertex AI CustomJobs. Defaults to Vertex's prebuilt PyTorch CPU image — already has torch, numpy, pandas, sklearn, and google-cloud-storage. The Lambda's CustomJob spec downloads our entrypoint + training code from GCS at job start, so no Docker build is needed."
+  description = "Container image URI for Vertex AI CustomJobs. Defaults to Docker Hub python:3.11-slim — Vertex's prebuilt PyTorch *CPU* image is stuck at the deprecated 1.4. The Lambda's bootstrap pip-installs torch+pandas+numpy+sklearn+google-cloud-storage at job start, then downloads our entrypoint + training code from GCS. ~2-3 min cold-start hit."
   type        = string
-  default     = "us-docker.pkg.dev/vertex-ai/training/pytorch-cpu.2-3.py310:latest"
+  default     = "python:3.11-slim"
 }
 
 variable "vertex_machine_type" {

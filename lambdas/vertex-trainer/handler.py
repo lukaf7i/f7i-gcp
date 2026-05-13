@@ -140,22 +140,28 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     job_name    = f"vertex-trainer-{sensor_id}-{run_id[-8:]}"
     base_output = f"gs://{staging_bucket}/output/{job_name}/"
 
-    # Vertex's prebuilt PyTorch image already has torch + numpy + pandas +
-    # sklearn + google-cloud-storage. We just need to drop our entrypoint
-    # shim + lstm_vae_train.py into the container and run them. Two-step:
-    # download the code zip from GCS using the bundled python/google-cloud-
-    # storage, unzip into /opt/code, exec entrypoint.py with hyperparam args.
+    # python:3.11-slim is the smallest reliable base image. Bootstrap:
+    #   1. pip install all training deps (torch CPU + numpy/pandas/sklearn +
+    #      google-cloud-storage) — cold-start hit ~2-3 min, dominated by torch.
+    #   2. Download code zip from GCS using google-cloud-storage and extract
+    #      via Python's zipfile (no apt-get install unzip needed).
+    #   3. Exec entrypoint.py with the hyperparam args passed through "$@".
     bootstrap_script = (
         "set -e\n"
-        'python -c "'
-        "import os; from urllib.parse import urlparse; "
+        "pip install -q --no-cache-dir "
+        "torch==2.0.1+cpu --extra-index-url https://download.pytorch.org/whl/cpu "
+        "numpy pandas scikit-learn google-cloud-storage\n"
+        "python -c \""
+        "import os, zipfile; "
+        "from urllib.parse import urlparse; "
         "from google.cloud import storage; "
         "u=urlparse(os.environ['CODE_PACKAGE_URI']); "
         "storage.Client().bucket(u.netloc).blob(u.path.lstrip('/'))"
-        ".download_to_filename('/tmp/code.zip')"
-        '"\n'
-        "mkdir -p /opt/code && cd /opt/code && unzip -qq /tmp/code.zip\n"
-        'exec python /opt/code/entrypoint.py "$@"\n'
+        ".download_to_filename('/tmp/code.zip'); "
+        "os.makedirs('/opt/code', exist_ok=True); "
+        "zipfile.ZipFile('/tmp/code.zip').extractall('/opt/code')"
+        "\"\n"
+        "exec python /opt/code/entrypoint.py \"$@\"\n"
     )
 
     job = aiplatform.CustomJob(
