@@ -40,10 +40,34 @@ resource "google_service_account" "vertex_trainer" {
 }
 
 # AWS Lambda execution role → impersonate the GCP SA via the AWS-typed pool.
+# This grants the f7i-gcp test-harness vertex-trainer-${env} Lambda; the
+# f7i-cdk predict consumer Lambdas get their own grants via
+# google_service_account_iam_member.vertex_trainer_wif_predict_consumers below.
 resource "google_service_account_iam_member" "vertex_trainer_wif" {
   service_account_id = google_service_account.vertex_trainer.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_pool.name}/attribute.aws_role/arn:aws:sts::${data.aws_caller_identity.current.account_id}:assumed-role/${aws_iam_role.vertex_trainer_lambda.name}"
+}
+
+# WIF impersonation for the f7i-cdk predict consumer Lambdas. Each role ARN
+# in var.aws_predict_consumer_role_arns becomes a principalSet member able to
+# impersonate the trainer SA — same federation the f7i-gcp test harness uses,
+# just driven by a tfvar so f7i-cdk can name its roles without f7i-gcp
+# changing. principalSet wants the *assumed-role* ARN (sts::assumed-role/X),
+# not the IAM role ARN (iam::role/X), so we transform both segments.
+locals {
+  predict_consumer_assumed_role_arns = [
+    for arn in var.aws_predict_consumer_role_arns :
+    replace(replace(arn, "arn:aws:iam:", "arn:aws:sts:"), ":role/", ":assumed-role/")
+  ]
+}
+
+resource "google_service_account_iam_member" "vertex_trainer_wif_predict_consumers" {
+  for_each = toset(local.predict_consumer_assumed_role_arns)
+
+  service_account_id = google_service_account.vertex_trainer.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_pool.name}/attribute.aws_role/${each.value}"
 }
 
 # Vertex AI submission + GCS staging permissions on the SA.

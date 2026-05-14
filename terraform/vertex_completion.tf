@@ -213,10 +213,22 @@ resource "aws_iam_role_policy" "gcp_vertex_completion" {
         Resource = aws_cloudwatch_event_bus.bridge.arn
       },
       {
-        Sid      = "ModelArtifactWrite"
+        Sid      = "ModelArtifactWriteDefault"
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:PutObjectAcl"]
         Resource = "${aws_s3_bucket.vertex_models.arn}/*"
+      },
+      {
+        # Multi-tenant predict buckets each get their own bucket (CDK pattern
+        # `${c_prefix}-anomaly-models-bucket-${suffix}`). Wildcard covers all
+        # tenants without f7i-gcp tracking the list.
+        Sid    = "ModelArtifactWritePredictBuckets"
+        Effect = "Allow"
+        Action = ["s3:PutObject", "s3:PutObjectAcl"]
+        Resource = [
+          "arn:aws:s3:::*anomaly-models*/*",
+          "arn:aws:s3:::*-anomaly-models-bucket*/*",
+        ]
       },
     ]
   })
