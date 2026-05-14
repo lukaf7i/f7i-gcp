@@ -49,15 +49,22 @@ resource "google_service_account_iam_member" "vertex_trainer_wif" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_pool.name}/attribute.aws_role/arn:aws:sts::${data.aws_caller_identity.current.account_id}:assumed-role/${aws_iam_role.vertex_trainer_lambda.name}"
 }
 
-# WIF impersonation for the f7i-cdk predict consumer Lambdas. Each role ARN
-# in var.aws_predict_consumer_role_arns becomes a principalSet member able to
-# impersonate the trainer SA — same federation the f7i-gcp test harness uses,
-# just driven by a tfvar so f7i-cdk can name its roles without f7i-gcp
-# changing. principalSet wants the *assumed-role* ARN (sts::assumed-role/X),
-# not the IAM role ARN (iam::role/X), so we transform both segments.
+# WIF impersonation for the f7i-cdk predict consumer Lambdas, auto-discovered
+# from SSM. f7i-cdk publishes one parameter per tenant under
+# /f7i/predict/consumer_role_arn/<tenant> with the Lambda's IAM role ARN as
+# the value. We read everything under that prefix and grant each ARN
+# iam.workloadIdentityUser on the trainer SA — same federation pattern as
+# the f7i-gcp test harness above, just multi-principal.
+#
+# principalSet expects the assumed-role ARN form (sts::assumed-role/X),
+# not the IAM role ARN (iam::role/X); transform both segments.
+data "aws_ssm_parameters_by_path" "predict_consumer_role_arns" {
+  path = "/f7i/predict/consumer_role_arn"
+}
+
 locals {
   predict_consumer_assumed_role_arns = [
-    for arn in var.aws_predict_consumer_role_arns :
+    for arn in data.aws_ssm_parameters_by_path.predict_consumer_role_arns.values :
     replace(replace(arn, "arn:aws:iam:", "arn:aws:sts:"), ":role/", ":assumed-role/")
   ]
 }

@@ -32,12 +32,6 @@ variable "gcp_bridge_sa_id" {
   default     = ""
 }
 
-variable "aws_predict_consumer_role_arns" {
-  description = "List of AWS IAM role ARNs (e.g. arn:aws:iam::ACCOUNT:role/f7i-predict-train-consumer-arnotts) that the f7i-cdk predict consumer Lambdas use. Each is granted WIF impersonation on the Vertex trainer SA so the Lambda can submit CustomJobs directly. Empty by default — populate once f7i-cdk lands its fixed-name role(s)."
-  type        = list(string)
-  default     = []
-}
-
 variable "gcp_vertex_completion_sa_id" {
   description = "Numeric unique ID of the GCP Service Account for the vertex-completion-bridge function. Used in the AWS OIDC trust condition (azp -> aud). Leave empty on first apply — fill in after apply creates the SA, then re-apply."
   type        = string
