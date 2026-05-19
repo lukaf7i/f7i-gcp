@@ -8,9 +8,8 @@ For each terminal-state Vertex CustomJob:
   4. Copy model.tar.gz from GCS into the destination S3 bucket. Path matches
      SageMaker's convention: s3://{bucket}/output/{job_name}/output/model.tar.gz
      so deploy_inference can treat Vertex artifacts identically to SageMaker.
-     Destination bucket is selected from the CustomJob's `predict_bucket`
-     label when present; otherwise falls back to AWS_MODEL_S3_BUCKET env var
-     (the f7i-gcp-owned default bucket used by the test harness).
+     Destination bucket comes from the CustomJob's `predict_bucket` label —
+     required. Jobs without the label skip the S3 copy and log a warning.
   5. PutEvents to EventBridge with the clean contract documented at the top
      of this module — single denormalised payload, no AWS API round trips
      needed by the deploy_inference Lambda.
@@ -214,7 +213,6 @@ def handle(cloud_event):
 
     project       = os.environ["GCP_PROJECT_ID"]
     location      = os.environ.get("VERTEX_LOCATION", "australia-southeast1")
-    default_s3_bucket = os.environ.get("AWS_MODEL_S3_BUCKET")
 
     job_id = _extract_job_id(log_entry)
     if not job_id:
@@ -272,8 +270,9 @@ def handle(cloud_event):
         except Exception as exc:
             log.error("Failed to read metrics: %s", exc)
 
-        # Destination: label > env default. SageMaker convention path.
-        target_bucket = job_labels.get("predict_bucket") or default_s3_bucket
+        # Destination is required via the predict_bucket label. Jobs without
+        # it skip the copy — submitters (cdk) must set it.
+        target_bucket = job_labels.get("predict_bucket")
         if target_bucket:
             s3_key = f"output/{job.display_name}/output/model.tar.gz"
             try:
@@ -284,7 +283,7 @@ def handle(cloud_event):
             except Exception as exc:
                 log.error("Failed to copy model to S3: %s", exc)
         else:
-            log.warning("No predict_bucket label and no default — skipping S3 copy")
+            log.warning("Job %s has no predict_bucket label — skipping S3 copy", job.display_name)
 
     event_detail = {
         "job_name":          job.display_name,

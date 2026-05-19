@@ -132,7 +132,6 @@ resource "google_cloudfunctions2_function" "vertex_completion_bridge" {
       AWS_ROLE_ARN        = aws_iam_role.gcp_vertex_completion.arn
       AWS_REGION          = var.aws_region
       AWS_EVENTBRIDGE_BUS = aws_cloudwatch_event_bus.bridge.name
-      AWS_MODEL_S3_BUCKET = aws_s3_bucket.vertex_models.id
       AWS_MODEL_S3_PREFIX = "vertex-trainer"
     }
   }
@@ -163,7 +162,6 @@ resource "terraform_data" "vertex_completion_env_hash" {
     aws_role_arn        = aws_iam_role.gcp_vertex_completion.arn
     aws_region          = var.aws_region
     aws_eventbridge_bus = aws_cloudwatch_event_bus.bridge.name
-    aws_model_s3_bucket = aws_s3_bucket.vertex_models.id
     aws_model_s3_prefix = "vertex-trainer"
   })
 }
@@ -213,12 +211,6 @@ resource "aws_iam_role_policy" "gcp_vertex_completion" {
         Resource = aws_cloudwatch_event_bus.bridge.arn
       },
       {
-        Sid      = "ModelArtifactWriteDefault"
-        Effect   = "Allow"
-        Action   = ["s3:PutObject", "s3:PutObjectAcl"]
-        Resource = "${aws_s3_bucket.vertex_models.arn}/*"
-      },
-      {
         # Multi-tenant predict buckets. CDK names them `${c_prefix}-f7i-anomalies-models`
         # (note: anomalies, not anomaly). Wildcards cover both the current naming
         # convention and the legacy `-anomaly-models-bucket` pattern.
@@ -233,25 +225,6 @@ resource "aws_iam_role_policy" "gcp_vertex_completion" {
       },
     ]
   })
-}
-
-# ── AWS: S3 bucket for the model artifacts copied out of GCS ─────────────────
-
-resource "aws_s3_bucket" "vertex_models" {
-  bucket = "f7i-gcp-vertex-models-${var.environment}-${data.aws_caller_identity.current.account_id}"
-}
-
-resource "aws_s3_bucket_ownership_controls" "vertex_models" {
-  bucket = aws_s3_bucket.vertex_models.id
-  rule { object_ownership = "BucketOwnerEnforced" }
-}
-
-resource "aws_s3_bucket_public_access_block" "vertex_models" {
-  bucket                  = aws_s3_bucket.vertex_models.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
 }
 
 # ── AWS: EventBridge rule + Lambda printer target ────────────────────────────

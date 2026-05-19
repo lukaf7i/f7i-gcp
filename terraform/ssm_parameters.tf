@@ -86,9 +86,3 @@ resource "aws_ssm_parameter" "vertex_eventbridge_bus_arn" {
   value       = aws_cloudwatch_event_bus.bridge.arn
 }
 
-resource "aws_ssm_parameter" "vertex_model_s3_bucket" {
-  name        = "/f7i/vertex/model_s3_bucket"
-  description = "Default S3 bucket the completion bridge copies model.tar.gz into when the CustomJob doesn't specify a predict_bucket label. Per-tenant buckets are preferred — set the label instead."
-  type        = "String"
-  value       = aws_s3_bucket.vertex_models.id
-}

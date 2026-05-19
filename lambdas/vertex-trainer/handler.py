@@ -114,9 +114,14 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     machine_type   = os.environ.get("VERTEX_MACHINE_TYPE", "n1-standard-4")
     service_account = os.environ["VERTEX_TRAINER_SA"]
 
-    sensor_id   = event.get("sensor_id", "proto-sensor")
-    n_rows      = int(event.get("n_rows", 250))
-    hps         = {**_DEFAULT_HPS, **event.get("hyperparameters", {}), "sensor-id": sensor_id}
+    sensor_id      = event.get("sensor_id", "proto-sensor")
+    n_rows         = int(event.get("n_rows", 250))
+    hps            = {**_DEFAULT_HPS, **event.get("hyperparameters", {}), "sensor-id": sensor_id}
+    # predict_bucket is what the f7i-gcp completion bridge keys on to decide
+    # where to copy model.tar.gz. Optional here — integration test sets it,
+    # but a job without it just skips the S3 copy (event still publishes).
+    predict_bucket = event.get("predict_bucket")
+    tenant         = event.get("tenant", "integration-test")
 
     run_id = str(int(time.time()))
     base = f"jobs/{run_id}"
@@ -164,6 +169,10 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         "exec python /opt/code/entrypoint.py \"$@\"\n"
     )
 
+    job_labels = {"tenant": tenant, "sensor_id": sensor_id, "algorithm": "lstm_vae"}
+    if predict_bucket:
+        job_labels["predict_bucket"] = predict_bucket
+
     job = aiplatform.CustomJob(
         display_name=job_name,
         worker_pool_specs=[{
@@ -185,6 +194,7 @@ def handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
         }],
         base_output_dir=base_output,
         staging_bucket=f"gs://{staging_bucket}",
+        labels=job_labels,
     )
     job.submit(service_account=service_account)
     log.info("Submitted CustomJob %s (resource=%s)", job_name, job.resource_name)
