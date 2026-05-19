@@ -227,6 +227,16 @@ resource "aws_iam_role_policy" "gcp_vertex_completion" {
   })
 }
 
+# Orphan the previous default-bucket resource. It's now unmanaged in TF and
+# left in AWS so any artifacts it holds aren't deleted by the cleanup apply.
+# Delete it manually (empty + remove) when convenient, then drop this block.
+removed {
+  from = aws_s3_bucket.vertex_models
+  lifecycle {
+    destroy = false
+  }
+}
+
 # ── AWS: EventBridge rule + Lambda printer target ────────────────────────────
 # Prototype target: a tiny Lambda that just logs the event. Lets us verify
 # end-to-end with `aws logs tail /aws/lambda/vertex-completion-printer-${env}`.

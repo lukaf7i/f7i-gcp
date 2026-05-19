@@ -196,6 +196,38 @@ resource "google_storage_bucket_object" "vertex_trainer_code" {
   source = data.archive_file.vertex_trainer_code_zip.output_path
 }
 
+# ── AWS: S3 bucket for Lambda zips ───────────────────────────────────────────
+# vertex-trainer's zip ships google-cloud-aiplatform (grpc + protobuf + …) and
+# is well over Lambda's 70MB direct-upload limit. Stage via S3 instead of
+# `filename`. Per-account, single bucket — any other Lambda we add here lands
+# under its own prefix.
+
+resource "aws_s3_bucket" "lambda_artifacts" {
+  bucket = "f7i-gcp-lambda-artifacts-${var.environment}-${data.aws_caller_identity.current.account_id}"
+}
+
+resource "aws_s3_bucket_ownership_controls" "lambda_artifacts" {
+  bucket = aws_s3_bucket.lambda_artifacts.id
+  rule { object_ownership = "BucketOwnerEnforced" }
+}
+
+resource "aws_s3_bucket_public_access_block" "lambda_artifacts" {
+  bucket                  = aws_s3_bucket.lambda_artifacts.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_object" "vertex_trainer_zip" {
+  bucket      = aws_s3_bucket.lambda_artifacts.id
+  key         = "vertex-trainer/${local.vertex_trainer_hash}.zip"
+  source      = local.vertex_trainer_zip
+  source_hash = local.vertex_trainer_hash
+
+  depends_on = [null_resource.vertex_trainer_build]
+}
+
 # ── AWS: Lambda function ─────────────────────────────────────────────────────
 
 resource "aws_lambda_function" "vertex_trainer" {
@@ -204,12 +236,13 @@ resource "aws_lambda_function" "vertex_trainer" {
   role             = aws_iam_role.vertex_trainer_lambda.arn
   runtime          = "python3.12"
   handler          = "handler.handler"
-  filename         = local.vertex_trainer_zip
+  s3_bucket        = aws_s3_object.vertex_trainer_zip.bucket
+  s3_key           = aws_s3_object.vertex_trainer_zip.key
   source_code_hash = local.vertex_trainer_hash
   timeout          = 900
   memory_size      = 2048
 
-  depends_on = [null_resource.vertex_trainer_build]
+  depends_on = [aws_s3_object.vertex_trainer_zip]
 
   environment {
     variables = {
