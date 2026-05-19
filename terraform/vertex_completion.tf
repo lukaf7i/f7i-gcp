@@ -15,6 +15,11 @@ resource "google_pubsub_topic" "vertex_job_completions" {
   project = var.project_id
   name    = "vertex-job-completions-${var.environment}${local.name_suffix}"
   labels  = local.common_labels
+
+  # First-time apply on a fresh project races against pubsub.googleapis.com
+  # enablement (caught on prod-cohort0). Functions had this depends_on
+  # already; topics didn't and lost the race.
+  depends_on = [google_project_service.core_apis]
 }
 
 # ── GCP: Cloud Logging sink — terminal state changes only ────────────────────
