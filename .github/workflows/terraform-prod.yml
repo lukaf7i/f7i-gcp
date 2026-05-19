@@ -28,15 +28,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # TEMP: restricted to cohort0 (arnotts) only for the first prod deploy
+        # test. After cohort0 is verified end-to-end, restore the other three
+        # entries below.
         include:
           - cohort: cohort0  # arnotts
             aws_role_arn: arn:aws:iam::935969326135:role/f7i-gcp-github-terraform
-          - cohort: cohort1
-            aws_role_arn: arn:aws:iam::211125324898:role/f7i-gcp-github-terraform
-          - cohort: cohort2
-            aws_role_arn: arn:aws:iam::043309367276:role/f7i-gcp-github-terraform
-          - cohort: cohort3  # darrel lea
-            aws_role_arn: arn:aws:iam::471112541316:role/f7i-gcp-github-terraform
+          # - cohort: cohort1
+          #   aws_role_arn: arn:aws:iam::211125324898:role/f7i-gcp-github-terraform
+          # - cohort: cohort2
+          #   aws_role_arn: arn:aws:iam::043309367276:role/f7i-gcp-github-terraform
+          # - cohort: cohort3  # darrel lea
+          #   aws_role_arn: arn:aws:iam::471112541316:role/f7i-gcp-github-terraform
     defaults:
       run:
         working-directory: terraform
