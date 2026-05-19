@@ -5,6 +5,11 @@ locals {
     environment = var.environment
     repository  = "f7i-ai-f7i-gcp"
   }
+
+  # Per-cohort suffix on GCP resource names. Empty in dev (single state per
+  # project); "-cohortN" in prod where four states share one project. AWS
+  # resource names don't use this — each AWS account is its own namespace.
+  name_suffix = var.cohort != "" ? "-${var.cohort}" : ""
 }
 
 resource "google_project_service" "core_apis" {
@@ -35,8 +40,8 @@ resource "google_project_service" "core_apis" {
 
 resource "google_service_account" "aws_bridge_fn" {
   project      = var.project_id
-  account_id   = "aws-bridge-fn-${var.environment}"
-  display_name = "AWS Bridge Cloud Function (${var.environment})"
+  account_id   = "aws-bridge-fn-${var.environment}${local.name_suffix}"
+  display_name = "AWS Bridge Cloud Function (${var.environment}${local.name_suffix})"
   description  = "Runs the aws-bridge Cloud Function; assumes AWS role via OIDC to write S3 + EventBridge."
 }
 
@@ -44,7 +49,7 @@ resource "google_service_account" "aws_bridge_fn" {
 
 resource "google_storage_bucket" "fn_source" {
   project                     = var.project_id
-  name                        = "${var.project_id}-fn-source-${var.environment}"
+  name                        = "${var.project_id}-fn-source-${var.environment}${local.name_suffix}"
   location                    = var.region
   uniform_bucket_level_access = true
   force_destroy               = true
@@ -68,7 +73,7 @@ data "archive_file" "aws_bridge_zip" {
 
 resource "google_cloudfunctions2_function" "aws_bridge" {
   project  = var.project_id
-  name     = "aws-bridge-${var.environment}"
+  name     = "aws-bridge-${var.environment}${local.name_suffix}"
   location = var.region
 
   description = "Test function: uploads a file to S3 and publishes to EventBridge via OIDC."

@@ -13,7 +13,7 @@
 
 resource "google_pubsub_topic" "vertex_job_completions" {
   project = var.project_id
-  name    = "vertex-job-completions-${var.environment}"
+  name    = "vertex-job-completions-${var.environment}${local.name_suffix}"
   labels  = local.common_labels
 }
 
@@ -23,7 +23,7 @@ resource "google_pubsub_topic" "vertex_job_completions" {
 
 resource "google_logging_project_sink" "vertex_job_completions" {
   project     = var.project_id
-  name        = "vertex-job-completions-${var.environment}"
+  name        = "vertex-job-completions-${var.environment}${local.name_suffix}"
   destination = "pubsub.googleapis.com/${google_pubsub_topic.vertex_job_completions.id}"
 
   # Vertex CustomJobs log under resource.type="ml_job" with plain textPayload
@@ -50,8 +50,8 @@ resource "google_pubsub_topic_iam_member" "vertex_completions_sink_publisher" {
 
 resource "google_service_account" "vertex_completion_fn" {
   project      = var.project_id
-  account_id   = "vertex-completion-fn-${var.environment}"
-  display_name = "Vertex Completion Bridge (${var.environment})"
+  account_id   = "vertex-completion-fn-${var.environment}${local.name_suffix}"
+  display_name = "Vertex Completion Bridge (${var.environment}${local.name_suffix})"
   description  = "Forwards Vertex CustomJob state-change events to AWS EventBridge."
 }
 
@@ -102,7 +102,7 @@ resource "google_storage_bucket_object" "vertex_completion_source" {
 
 resource "google_cloudfunctions2_function" "vertex_completion_bridge" {
   project     = var.project_id
-  name        = "vertex-completion-bridge-${var.environment}"
+  name        = "vertex-completion-bridge-${var.environment}${local.name_suffix}"
   location    = var.region
   description = "Forwards Vertex CustomJob state-change events to AWS EventBridge."
   labels      = local.common_labels

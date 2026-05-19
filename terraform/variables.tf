@@ -20,6 +20,22 @@ variable "environment" {
   }
 }
 
+# Prod runs once per AWS tenant account ("cohort"). All four prod states
+# target the same GCP prod project, so GCP resources get a "-cohortN" suffix
+# to avoid collisions in the shared project. AWS resource names stay clean
+# (each cohort's AWS account is its own namespace).
+#
+# Cohort → tenant mapping:
+#   cohort0 = arnotts
+#   cohort1 = (TBD)
+#   cohort2 = (TBD)
+#   cohort3 = darrel lea
+variable "cohort" {
+  description = "Per-tenant cohort label (e.g. cohort0). Empty for dev. Appended to GCP resource names so four prod states don't collide in the shared GCP project."
+  type        = string
+  default     = ""
+}
+
 variable "aws_region" {
   description = "AWS region for the bridge resources and provider."
   type        = string

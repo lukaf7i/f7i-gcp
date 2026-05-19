@@ -7,12 +7,10 @@ on:
     paths:
       - "terraform/**"
       - "functions/**"
+      - "containers/**"
+      - "lambdas/**"
       - ".github/workflows/terraform-prod.yml"
   workflow_dispatch:
-
-concurrency:
-  group: terraform-prod-${{ github.repository }}
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -20,8 +18,25 @@ permissions:
 
 jobs:
   apply:
+    name: Terraform apply (prod ${{ matrix.cohort }})
     runs-on: ubuntu-latest
-    environment: terraform-apply-prod
+    # Per-cohort concurrency: cohort0 applies don't block cohort1, etc.
+    # A second push to main while a cohort is mid-apply is queued (cancel-in-progress=false).
+    concurrency:
+      group: terraform-prod-${{ matrix.cohort }}-${{ github.repository }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cohort: cohort0  # arnotts
+            aws_role_arn: arn:aws:iam::935969326135:role/f7i-gcp-github-terraform
+          - cohort: cohort1
+            aws_role_arn: arn:aws:iam::211125324898:role/f7i-gcp-github-terraform
+          - cohort: cohort2
+            aws_role_arn: arn:aws:iam::043309367276:role/f7i-gcp-github-terraform
+          - cohort: cohort3  # darrel lea
+            aws_role_arn: arn:aws:iam::471112541316:role/f7i-gcp-github-terraform
     defaults:
       run:
         working-directory: terraform
@@ -40,9 +55,9 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN_PROD }}
+          role-to-assume: ${{ matrix.aws_role_arn }}
           aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
 
-      - run: terraform init -input=false -reconfigure -backend-config="$GITHUB_WORKSPACE/terraform/env/gcp-prod.backend.hcl"
+      - run: terraform init -input=false -reconfigure -backend-config="$GITHUB_WORKSPACE/terraform/env/gcp-prod-${{ matrix.cohort }}.backend.hcl"
 
-      - run: terraform apply -input=false -auto-approve -no-color -var-file="$GITHUB_WORKSPACE/terraform/env/prod.tfvars"
+      - run: terraform apply -input=false -auto-approve -no-color -var-file="$GITHUB_WORKSPACE/terraform/env/prod-${{ matrix.cohort }}.tfvars"

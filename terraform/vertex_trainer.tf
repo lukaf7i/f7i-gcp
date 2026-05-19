@@ -14,15 +14,15 @@ data "google_project" "current" {
 
 resource "google_iam_workload_identity_pool" "aws_pool" {
   project                   = var.project_id
-  workload_identity_pool_id = "aws-lambda-${var.environment}"
-  display_name              = "AWS Lambda Pool (${var.environment})"
+  workload_identity_pool_id = "aws-lambda-${var.environment}${local.name_suffix}"
+  display_name              = "AWS Lambda Pool (${var.environment}${local.name_suffix})"
   description               = "Federates AWS Lambda execution roles into GCP service accounts."
 }
 
 resource "google_iam_workload_identity_pool_provider" "aws_provider" {
   project                            = var.project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.aws_pool.workload_identity_pool_id
-  workload_identity_pool_provider_id = "aws-${var.environment}"
+  workload_identity_pool_provider_id = "aws-${var.environment}${local.name_suffix}"
   display_name                       = "AWS account ${data.aws_caller_identity.current.account_id}"
 
   aws {
@@ -34,7 +34,7 @@ resource "google_iam_workload_identity_pool_provider" "aws_provider" {
 
 resource "google_service_account" "vertex_trainer" {
   project      = var.project_id
-  account_id   = "vertex-trainer-${var.environment}"
+  account_id   = "vertex-trainer-${var.environment}${local.name_suffix}"
   display_name = "Vertex Trainer (impersonated by AWS Lambda)"
   description  = "Submits Vertex AI CustomJobs and writes to the training staging bucket."
 }
@@ -98,7 +98,7 @@ resource "google_service_account_iam_member" "vertex_trainer_self_user" {
 
 resource "google_storage_bucket" "vertex_trainer_staging" {
   project                     = var.project_id
-  name                        = "${var.project_id}-vertex-trainer-${var.environment}"
+  name                        = "${var.project_id}-vertex-trainer-${var.environment}${local.name_suffix}"
   location                    = var.region
   uniform_bucket_level_access = true
   force_destroy               = var.environment == "dev"
