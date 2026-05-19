@@ -7,6 +7,6 @@ cohort      = "cohort2"
 
 manage_cloud_function_public_invoker = false
 
-# Fill in after first apply — see prod-cohort0.tfvars for the procedure.
-gcp_bridge_sa_id            = ""
-gcp_vertex_completion_sa_id = ""
+# Filled after first apply created the SAs.
+gcp_bridge_sa_id            = "117562300807125625233"
+gcp_vertex_completion_sa_id = "113862012676359813236"
