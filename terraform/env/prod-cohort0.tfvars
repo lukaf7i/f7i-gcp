@@ -9,8 +9,8 @@ cohort      = "cohort0"
 
 manage_cloud_function_public_invoker = false
 
-# Leave empty on first apply. After GCP creates the SAs, read the numeric IDs
-# from `terraform output` and fill these in, then re-apply so the AWS-side
-# OIDC trust policies bind to the correct azp values.
-gcp_bridge_sa_id            = ""
-gcp_vertex_completion_sa_id = ""
+# Filled after first apply created the SAs. Second apply binds these into
+# the AWS-side OIDC trust conditions (accounts.google.com:aud) so real
+# tokens from the GCP functions match.
+gcp_bridge_sa_id            = "101338956189147266648"
+gcp_vertex_completion_sa_id = "104099614363252033994"
