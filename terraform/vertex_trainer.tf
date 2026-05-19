@@ -161,6 +161,14 @@ locals {
 resource "null_resource" "vertex_trainer_build" {
   triggers = {
     content_hash = local.vertex_trainer_hash
+    # /tmp/vertex-trainer-${env}.zip is ephemeral on CI runners — each apply
+    # gets a fresh ubuntu-latest VM. Without an always-changing trigger, the
+    # null_resource's state can read "built at hash X" while the artifact is
+    # actually gone, and aws_s3_object.vertex_trainer_zip below then fails
+    # with "no such file or directory". timestamp() forces a rebuild every
+    # apply; the dependent aws_s3_object skips re-upload when source_hash
+    # matches, so no extra S3 churn.
+    always_run = timestamp()
   }
 
   provisioner "local-exec" {
