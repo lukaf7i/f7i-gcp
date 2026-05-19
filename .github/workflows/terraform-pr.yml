@@ -20,6 +20,11 @@ permissions:
   contents: read
   id-token: write
 
+# Opt JS-based actions onto Node.js 24 ahead of the June 2026 default flip
+# (see terraform-prod.yml for the rationale).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   plan:
     runs-on: ubuntu-latest

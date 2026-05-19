@@ -16,6 +16,13 @@ permissions:
   contents: read
   id-token: write
 
+# Opt JS-based actions (checkout, aws creds, gcp auth, setup-terraform) onto
+# Node.js 24 ahead of the June 2026 default flip. Keeps pinned action versions
+# without risking the API drift of bumping each one. Remove once Node 24 is
+# the default.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   apply:
     name: Terraform apply (prod ${{ matrix.cohort }})
