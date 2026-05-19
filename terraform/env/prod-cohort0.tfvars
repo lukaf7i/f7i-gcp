@@ -1,5 +1,7 @@
 # cohort0 = arnotts
 # Paired with gcp-prod-cohort0.backend.hcl; targets AWS account 935969326135.
+# First apply needed owner on the prod project for the CI SA — granted
+# manually 2026-05-19 via gcloud, now terraform-managed (github_terraform_owner).
 project_id  = "anomaly-detection-496003"
 region      = "australia-southeast1"
 environment = "prod"
