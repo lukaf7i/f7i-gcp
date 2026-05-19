@@ -10,6 +10,12 @@ locals {
   # project); "-cohortN" in prod where four states share one project. AWS
   # resource names don't use this — each AWS account is its own namespace.
   name_suffix = var.cohort != "" ? "-${var.cohort}" : ""
+
+  # Short variant for resources with stricter length limits.
+  # google_service_account.account_id maxes at 30 chars — and
+  # "vertex-completion-fn-prod-cohort0" overshoots at 33. Map cohortN → cN
+  # for that one resource's account_id; display names keep the long form.
+  sa_short_suffix = var.cohort != "" ? "-${replace(var.cohort, "cohort", "c")}" : ""
 }
 
 resource "google_project_service" "core_apis" {

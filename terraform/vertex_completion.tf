@@ -49,8 +49,11 @@ resource "google_pubsub_topic_iam_member" "vertex_completions_sink_publisher" {
 # ── GCP: Service account for the bridge function ─────────────────────────────
 
 resource "google_service_account" "vertex_completion_fn" {
-  project      = var.project_id
-  account_id   = "vertex-completion-fn-${var.environment}${local.name_suffix}"
+  project = var.project_id
+  # sa_short_suffix (not name_suffix) — account_id has a 30-char cap and
+  # "vertex-completion-fn-prod-cohort0" is 33. The short suffix maps
+  # cohortN → cN; dev (no cohort) is unaffected.
+  account_id   = "vertex-completion-fn-${var.environment}${local.sa_short_suffix}"
   display_name = "Vertex Completion Bridge (${var.environment}${local.name_suffix})"
   description  = "Forwards Vertex CustomJob state-change events to AWS EventBridge."
 }
