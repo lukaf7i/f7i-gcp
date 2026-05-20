@@ -21,3 +21,19 @@ provider "aws" {
     }
   }
 }
+
+# us-east-1 alias — only used by cohort2 to mirror the bridge bus + SSM
+# params into the region where certarus (and only certarus) deploys.
+# See cohort2_us_east_1.tf for the cohort2-gated resources.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      ManagedBy   = "terraform"
+      Environment = var.environment
+      Repository  = "f7i-ai/f7i-gcp"
+    }
+  }
+}
