@@ -144,6 +144,18 @@ resource "aws_ssm_parameter" "vertex_eventbridge_bus_arn_use1" {
   value       = aws_cloudwatch_event_bus.bridge_use1[0].arn
 }
 
+# ── us-east-1: predict consumer role ARN lookup (for WIF) ─────────────────────
+# certarus's CDK writes /f7i/predict/consumer_role_arn/certarus to SSM in its
+# deploy region (us-east-1). The local block in vertex_trainer.tf merges this
+# with the ap-southeast-2 lookup so the WIF impersonation binding on the
+# Vertex trainer SA covers certarus's Lambda role too.
+
+data "aws_ssm_parameters_by_path" "predict_consumer_role_arns_use1" {
+  count    = local.is_cohort2 ? 1 : 0
+  provider = aws.us_east_1
+  path     = "/f7i/predict/consumer_role_arn"
+}
+
 # ── Cross-region forwarder: ap-southeast-2 bus → us-east-1 bus ────────────────
 # A rule on the primary (ap-southeast-2) bus matches VertexTrainingJobStateChange
 # events with labels.tenant=certarus and targets the us-east-1 bus's ARN.
