@@ -39,56 +39,29 @@ resource "google_service_account" "vertex_trainer" {
   description  = "Submits Vertex AI CustomJobs and writes to the training staging bucket."
 }
 
-# AWS Lambda execution role → impersonate the GCP SA via the AWS-typed pool.
-# This grants the f7i-gcp test-harness vertex-trainer-${env} Lambda; the
-# f7i-cdk predict consumer Lambdas get their own grants via
-# google_service_account_iam_member.vertex_trainer_wif_predict_consumers below.
-resource "google_service_account_iam_member" "vertex_trainer_wif" {
-  service_account_id = google_service_account.vertex_trainer.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_pool.name}/attribute.aws_role/arn:aws:sts::${data.aws_caller_identity.current.account_id}:assumed-role/${aws_iam_role.vertex_trainer_lambda.name}"
-}
-
-# WIF impersonation for the f7i-cdk predict consumer Lambdas, auto-discovered
-# from SSM. f7i-cdk publishes one parameter per tenant under
-# /f7i/predict/consumer_role_arn/<tenant> with the Lambda's IAM role ARN as
-# the value. We read everything under that prefix and grant each ARN
-# iam.workloadIdentityUser on the trainer SA — same federation pattern as
-# the f7i-gcp test harness above, just multi-principal.
+# WIF impersonation: any AWS Lambda execution role in this cohort's AWS
+# account can impersonate the Vertex trainer SA.
 #
-# principalSet expects the assumed-role ARN form (sts::assumed-role/X),
-# not the IAM role ARN (iam::role/X); transform both segments.
-data "aws_ssm_parameters_by_path" "predict_consumer_role_arns" {
-  path = "/f7i/predict/consumer_role_arn"
-}
-
-locals {
-  # nonsensitive(): aws_ssm_parameters_by_path.values is provider-flagged
-  # sensitive because SSM can hold SecureStrings; IAM role ARNs aren't
-  # secret and for_each rejects sensitive values, so strip the flag.
-  #
-  # For cohort2 also merge the us-east-1 lookup (certarus's CDK writes its
-  # consumer role ARN under /f7i/predict/consumer_role_arn/certarus in
-  # us-east-1, since that's where its predict stack deploys). See
-  # cohort2_us_east_1.tf for the cross-region rationale.
-  predict_consumer_assumed_role_arns = nonsensitive(concat(
-    [
-      for arn in data.aws_ssm_parameters_by_path.predict_consumer_role_arns.values :
-      replace(replace(arn, "arn:aws:iam:", "arn:aws:sts:"), ":role/", ":assumed-role/")
-    ],
-    local.is_cohort2 ? [
-      for arn in data.aws_ssm_parameters_by_path.predict_consumer_role_arns_use1[0].values :
-      replace(replace(arn, "arn:aws:iam:", "arn:aws:sts:"), ":role/", ":assumed-role/")
-    ] : [],
-  ))
-}
-
-resource "google_service_account_iam_member" "vertex_trainer_wif_predict_consumers" {
-  for_each = toset(local.predict_consumer_assumed_role_arns)
-
+# The WIF pool above (google_iam_workload_identity_pool_provider.aws_provider)
+# is already locked to a single aws.account_id, so attribute.aws_account is
+# effectively the entire pool. Binding once by account replaces the previous
+# per-tenant explicit allow-list (auto-discovered from SSM) and avoids the
+# chicken-and-egg where adding a new CDK tenant required an f7i-gcp re-apply
+# before its Lambda could submit Vertex jobs.
+#
+# Covers: the f7i-gcp test-harness vertex-trainer-lambda-${env} Lambda *and*
+# every f7i-cdk f7i-predict-train-consumer-{tenant} Lambda in the same AWS
+# account. New tenants onboarded by CDK work immediately.
+#
+# Security context: the pool only accepts tokens minted by AWS STS for this
+# specific AWS account; the Vertex trainer SA's GCP permissions are narrowly
+# scoped (aiplatform.user + storage.objectAdmin on the staging bucket). The
+# blast radius of "any compromised Lambda in this account can submit a Vertex
+# job" is low — all Lambdas in the cohort are f7i-deployed.
+resource "google_service_account_iam_member" "vertex_trainer_wif_account" {
   service_account_id = google_service_account.vertex_trainer.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_pool.name}/attribute.aws_role/${each.value}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws_pool.name}/attribute.aws_account/${data.aws_caller_identity.current.account_id}"
 }
 
 # Vertex AI submission + GCS staging permissions on the SA.
