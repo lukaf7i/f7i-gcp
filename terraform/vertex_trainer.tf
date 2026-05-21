@@ -28,6 +28,17 @@ resource "google_iam_workload_identity_pool_provider" "aws_provider" {
   aws {
     account_id = data.aws_caller_identity.current.account_id
   }
+
+  # Without an explicit attribute_mapping, only google.subject (=assertion.arn)
+  # is populated on the federated principal — the documented "default" map for
+  # AWS providers is not actually applied. That broke the principalSet binding
+  # `attribute.aws_account/<account_id>` introduced in 8476fb0, leaving every
+  # AWS Lambda unable to impersonate the trainer SA.
+  attribute_mapping = {
+    "google.subject"        = "assertion.arn"
+    "attribute.aws_account" = "assertion.account"
+    "attribute.aws_role"    = "assertion.arn.contains('assumed-role') ? assertion.arn.extract('assumed-role/{role}/') : assertion.arn"
+  }
 }
 
 # ── GCP: Service Account the Lambda impersonates ─────────────────────────────
